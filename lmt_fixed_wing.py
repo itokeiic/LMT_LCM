@@ -34,7 +34,7 @@ def calculate_mi_bar(eta_j, eta_j_plus_1, b_i, b, eta_0i, rho, V):
     return integral / (eta_j - eta_j_plus_1)
 
 def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n, 
-                            symmetric=True):
+                            placement='symmetric'):
     """
     Solves for the induced velocities using the local momentum theory.
     
@@ -47,7 +47,8 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
         V: Forward flight speed.
         b: Wingspan.
         n: Number of elliptical wings. Also, number of sections
-        symmetric: Whether the elliptical wings are symmetrically placed.
+        placement: Whether the elliptical wings are symmetrically placed.
+                   options are 'symmetric', 'right'.
 
     Returns:
         A tuple containing:
@@ -57,8 +58,12 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
     A = np.zeros((n, n))
     B = np.zeros(n)
-    eta_positions = np.linspace(-1, 0, n + 1)
-    # eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+    if placement == 'symmetric':
+        eta_positions = np.linspace(-1, 0, n + 1)
+        #eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+    elif placement == 'right':
+        eta_positions = np.linspace(-1, 1, n + 1)
+        #eta_positions = -1+2*np.sin(np.linspace(0.0,np.pi/2,n+1))
     
     for j in range(n): # for each section
         eta_j = eta_positions[j] #Section lower bound
@@ -70,9 +75,9 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
         for i in range(n): # for each elliptic wing
             
-            if symmetric:
+            if placement == 'symmetric':
                 eta_0i = 0.0 # Symmetric placement. y_0i = 0, so eta_0i = 0
-            else:
+            elif placement == 'right':
                 eta_0i = 0.5*(eta_positions[i] + 1.0)
 
             bi = b*(eta_0i - eta_positions[i])
@@ -101,9 +106,9 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
         eta_j_plus_1 = eta_positions[j + 1] #Section upper bound
         val = 0.0
         for i in range(n): # for elliptic wing i
-            if symmetric:
+            if placement == 'symmetric':
                 eta_0i = 0.0 # Symmetric placement. y_0i = 0, so eta_0i = 0
-            else:
+            elif placement == 'right':
                 eta_0i = 0.5*(eta_positions[i] + 1.0)
             bi = b*(eta_0i - eta_positions[i])
             xi_lb = (eta_j - eta_0i)*(b/bi)
@@ -115,59 +120,85 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
     return dv, induced_velocities, eta_positions
 
-def elliptical_chord_function(AR, S):
-    b = np.sqrt(AR * S) # AR = b**2/S
-    c0 = (4 * S) / (np.pi * b)
-    def chord_func(eta):
-        # Ensure value inside sqrt is non-negative
-        sqrt_val = max(0.0, 1.0 - eta**2) 
-        return c0 * np.sqrt(sqrt_val)
-    return chord_func, b
-
-def tapered_chord_function(taper_ratio, AR, S):
-    b = np.sqrt(AR * S)
-    c_root = (2 * S) / (b * (1 + taper_ratio)) #S = c_root*(1 + taper_ratio)*b/2
-    # c_tip = taper_ratio * c_root # Not directly needed in formula below
-    def chord_func(eta):
-        return c_root * (1.0 - (1.0 - taper_ratio) * abs(eta))
-    return chord_func, b
 
 if __name__ == "__main__":
     # --- Example Usage ---
     rho = 1.225  # Air density
     V = 10       # Flight speed
-    b = 10       # Wingspan
+    #b = 10       # Wingspan
     a = 2 * np.pi # Lift slope
+    AR = 10 # Aspect ratio
+    S = 10 # Wing area
+    taper_ratio = 0.4 # used only in tapered wing
+    planform = 'rectangular' # options: 'rectangular', 'elliptic', 'tapered'
+    n = 10  # Number of sections
+    placement = 'symmetric' # options: 'symmetric', 'right'
 
     # Example wing geometry (constant chord and angle of attack)
-    def constant_chord(eta):
-        return 1.0
     def constant_aoa(eta):
         return 0.1
 
-    n = 2  # Number of sections
+    if planform == 'rectangular':
+        def constant_chord_function(AR,S):
+            chord = S/AR
+            b=S/chord
+            def chord_func(eta):
+                return chord
+            return chord_func, b
+        chord_func, b = constant_chord_function(AR,S)
+    elif planform == 'elliptic':
+        def elliptical_chord_function(AR, S):
+            b = np.sqrt(AR * S)
+            c0 = (4 * S) / (np.pi * b)
+            def chord_func(eta):
+                # Ensure value inside sqrt is non-negative
+                sqrt_val = max(0.0, 1.0 - eta**2) 
+                return c0 * np.sqrt(sqrt_val)
+            return chord_func, b 
+        chord_func, b = elliptical_chord_function(AR,S)
+    elif planform == 'tapered':
+        def tapered_chord_function(taper_ratio, AR, S):
+            b = np.sqrt(AR * S)
+            c_root = (2 * S) / (b * (1 + taper_ratio))
+            # c_tip = taper_ratio * c_root # Not directly needed in formula below
+            def chord_func(eta):
+                return c_root * (1.0 - (1.0 - taper_ratio) * abs(eta))
+            return chord_func, b
+        chord_func, b = tapered_chord_function(taper_ratio,AR,S)
 
     dv, induced_velocities, eta_positions = solve_induced_velocities(
-        constant_chord, constant_aoa, V, b, n, symmetric=True
+        chord_func, constant_aoa, V, b, n, placement=placement
     )
 
     # Calculate lift distribution
     lift_distribution = np.zeros(n)
+    induced_drag_distribution = np.zeros(n)
     chord_values = np.zeros(n)
     aoa_values = np.zeros(n)
-
+    total_lift = 0.0
+    total_induced_drag = 0.0
     for i in range(n):
         eta_val = (eta_positions[i] + eta_positions[i+1])/2
-        chord_values[i] = constant_chord(eta_val)
+        chord_values[i] = chord_func(eta_val)
         aoa_values[i] = constant_aoa(eta_val)
         #Uses Equation (17)
         lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
-
-
+        induced_drag_distribution[i] = lift_distribution[i]*np.sin(np.arctan(induced_velocities[i]/V))
+        total_lift += lift_distribution[i]*(eta_positions[i+1]-eta_positions[i])
+        total_induced_drag += induced_drag_distribution[i]*(eta_positions[i+1]-eta_positions[i])
+    if placement == 'symmetric':
+        total_lift = 2*total_lift
+        total_induced_drag = 2*total_induced_drag
+    CL = total_lift/(0.5*rho*V**2*S)
+    CDi = total_induced_drag/(0.5*rho*V**2*S)
     # Print results
     print("dv:",dv)
     print("Induced Velocities:", induced_velocities)
     print("Lift Distribution:", lift_distribution)
+    print("Total Lift:",total_lift)
+    print("Total Induced Drag:",total_induced_drag)
+    print("CL:",CL)
+    print("CDi:",CDi)
 
     # Plotting
     plt.figure(figsize=(12, 6))
@@ -183,7 +214,9 @@ if __name__ == "__main__":
 
     # Plot lift distribution
     plt.subplot(1, 2, 2)
+    
     plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
+    plt.plot(eta_positions[:-1], elliptical_lift_distribution(total_lift,b,eta_positions[:-1]),label='Elliptic Lift Distribution')
     plt.xlabel('Spanwise Position (η)')
     plt.ylabel('Lift Distribution (N/m)')
     plt.title('Lift Distribution')
