@@ -115,62 +115,80 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
     return dv, induced_velocities, eta_positions
 
-# --- Example Usage ---
-rho = 1.225  # Air density
-V = 10       # Flight speed
-b = 10       # Wingspan
-a = 2 * np.pi # Lift slope
+def elliptical_chord_function(AR, S):
+    b = np.sqrt(AR * S) # AR = b**2/S
+    c0 = (4 * S) / (np.pi * b)
+    def chord_func(eta):
+        # Ensure value inside sqrt is non-negative
+        sqrt_val = max(0.0, 1.0 - eta**2) 
+        return c0 * np.sqrt(sqrt_val)
+    return chord_func, b
 
-# Example wing geometry (constant chord and angle of attack)
-def constant_chord(eta):
-    return 1.0
-def constant_aoa(eta):
-    return 0.1
+def tapered_chord_function(taper_ratio, AR, S):
+    b = np.sqrt(AR * S)
+    c_root = (2 * S) / (b * (1 + taper_ratio)) #S = c_root*(1 + taper_ratio)*b/2
+    # c_tip = taper_ratio * c_root # Not directly needed in formula below
+    def chord_func(eta):
+        return c_root * (1.0 - (1.0 - taper_ratio) * abs(eta))
+    return chord_func, b
 
-n = 50  # Number of sections
+if __name__ == "__main__":
+    # --- Example Usage ---
+    rho = 1.225  # Air density
+    V = 10       # Flight speed
+    b = 10       # Wingspan
+    a = 2 * np.pi # Lift slope
 
-dv, induced_velocities, eta_positions = solve_induced_velocities(
-    constant_chord, constant_aoa, V, b, n, symmetric=True
-)
+    # Example wing geometry (constant chord and angle of attack)
+    def constant_chord(eta):
+        return 1.0
+    def constant_aoa(eta):
+        return 0.1
 
-# Calculate lift distribution
-lift_distribution = np.zeros(n)
-chord_values = np.zeros(n)
-aoa_values = np.zeros(n)
+    n = 2  # Number of sections
 
-for i in range(n):
-    eta_val = (eta_positions[i] + eta_positions[i+1])/2
-    chord_values[i] = constant_chord(eta_val)
-    aoa_values[i] = constant_aoa(eta_val)
-    #Uses Equation (17)
-    lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
+    dv, induced_velocities, eta_positions = solve_induced_velocities(
+        constant_chord, constant_aoa, V, b, n, symmetric=True
+    )
+
+    # Calculate lift distribution
+    lift_distribution = np.zeros(n)
+    chord_values = np.zeros(n)
+    aoa_values = np.zeros(n)
+
+    for i in range(n):
+        eta_val = (eta_positions[i] + eta_positions[i+1])/2
+        chord_values[i] = constant_chord(eta_val)
+        aoa_values[i] = constant_aoa(eta_val)
+        #Uses Equation (17)
+        lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
 
 
-# Print results
-print("dv:",dv)
-print("Induced Velocities:", induced_velocities)
-print("Lift Distribution:", lift_distribution)
+    # Print results
+    print("dv:",dv)
+    print("Induced Velocities:", induced_velocities)
+    print("Lift Distribution:", lift_distribution)
 
-# Plotting
-plt.figure(figsize=(12, 6))
+    # Plotting
+    plt.figure(figsize=(12, 6))
 
-# Plot induced velocities
-plt.subplot(1, 2, 1)
-plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities')
-plt.xlabel('Spanwise Position (η)')
-plt.ylabel('Induced Velocity (m/s)')
-plt.title('Induced Velocities')
-plt.grid(True)
-plt.legend()
+    # Plot induced velocities
+    plt.subplot(1, 2, 1)
+    plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Induced Velocity (m/s)')
+    plt.title('Induced Velocities')
+    plt.grid(True)
+    plt.legend()
 
-# Plot lift distribution
-plt.subplot(1, 2, 2)
-plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
-plt.xlabel('Spanwise Position (η)')
-plt.ylabel('Lift Distribution (N/m)')
-plt.title('Lift Distribution')
-plt.grid(True)
-plt.legend()
+    # Plot lift distribution
+    plt.subplot(1, 2, 2)
+    plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Lift Distribution (N/m)')
+    plt.title('Lift Distribution')
+    plt.grid(True)
+    plt.legend()
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
