@@ -57,8 +57,12 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
     A = np.zeros((n, n))
     B = np.zeros(n)
-    eta_positions = np.linspace(-1, 0, n + 1)
-    # eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+    if symmetric == True:
+        #eta_positions = np.linspace(-1, 0, n + 1)
+        eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+    else:
+        eta_positions = np.linspace(-1, 1, n + 1)
+        #eta_positions = -1+2*np.sin(np.linspace(0.0,np.pi/2,n+1))
     
     for j in range(n): # for each section
         eta_j = eta_positions[j] #Section lower bound
@@ -115,62 +119,87 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
 
     return dv, induced_velocities, eta_positions
 
-# --- Example Usage ---
-rho = 1.225  # Air density
-V = 10       # Flight speed
-b = 10       # Wingspan
-a = 2 * np.pi # Lift slope
 
-# Example wing geometry (constant chord and angle of attack)
-def constant_chord(eta):
-    return 1.0
-def constant_aoa(eta):
-    return 0.1
+if __name__ == "__main__":
+    # --- Example Usage ---
+    rho = 1.225  # Air density
+    V = 10       # Flight speed
+    b = 10       # Wingspan
+    a = 2 * np.pi # Lift slope
+    planform = 'elliptic' # other options: 'elliptic', 'tapered'
+    n = 10  # Number of sections
+    
+    # Example wing geometry (constant chord and angle of attack)
+    def constant_aoa(eta):
+        return 0.1
 
-n = 50  # Number of sections
+    if planform == 'rectangular':
+        def constant_chord(eta):
+            return 1.0
+        b = 10
+        chord_func = constant_chord
+    elif planform == 'elliptic':
+        def elliptical_chord_function(AR, S):
+            b = np.sqrt(AR * S)
+            c0 = (4 * S) / (np.pi * b)
+            def chord_func(eta):
+                # Ensure value inside sqrt is non-negative
+                sqrt_val = max(0.0, 1.0 - eta**2) 
+                return c0 * np.sqrt(sqrt_val)
+            return chord_func, b 
+        chord_func, b = elliptical_chord_function(10,10)
+    elif planform == 'tapered':
+        def tapered_chord_function(taper_ratio, AR, S):
+            b = np.sqrt(AR * S)
+            c_root = (2 * S) / (b * (1 + taper_ratio))
+            # c_tip = taper_ratio * c_root # Not directly needed in formula below
+            def chord_func(eta):
+                return c_root * (1.0 - (1.0 - taper_ratio) * abs(eta))
+            return chord_func, b
+        chord_func, b = tapered_chord_function(0.4,10,10)
 
-dv, induced_velocities, eta_positions = solve_induced_velocities(
-    constant_chord, constant_aoa, V, b, n, symmetric=True
-)
+    dv, induced_velocities, eta_positions = solve_induced_velocities(
+        chord_func, constant_aoa, V, b, n, symmetric=False
+    )
 
-# Calculate lift distribution
-lift_distribution = np.zeros(n)
-chord_values = np.zeros(n)
-aoa_values = np.zeros(n)
+    # Calculate lift distribution
+    lift_distribution = np.zeros(n)
+    chord_values = np.zeros(n)
+    aoa_values = np.zeros(n)
 
-for i in range(n):
-    eta_val = (eta_positions[i] + eta_positions[i+1])/2
-    chord_values[i] = constant_chord(eta_val)
-    aoa_values[i] = constant_aoa(eta_val)
-    #Uses Equation (17)
-    lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
+    for i in range(n):
+        eta_val = (eta_positions[i] + eta_positions[i+1])/2
+        chord_values[i] = chord_func(eta_val)
+        aoa_values[i] = constant_aoa(eta_val)
+        #Uses Equation (17)
+        lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
 
 
-# Print results
-print("dv:",dv)
-print("Induced Velocities:", induced_velocities)
-print("Lift Distribution:", lift_distribution)
+    # Print results
+    print("dv:",dv)
+    print("Induced Velocities:", induced_velocities)
+    print("Lift Distribution:", lift_distribution)
 
-# Plotting
-plt.figure(figsize=(12, 6))
+    # Plotting
+    plt.figure(figsize=(12, 6))
 
-# Plot induced velocities
-plt.subplot(1, 2, 1)
-plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities')
-plt.xlabel('Spanwise Position (η)')
-plt.ylabel('Induced Velocity (m/s)')
-plt.title('Induced Velocities')
-plt.grid(True)
-plt.legend()
+    # Plot induced velocities
+    plt.subplot(1, 2, 1)
+    plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Induced Velocity (m/s)')
+    plt.title('Induced Velocities')
+    plt.grid(True)
+    plt.legend()
 
-# Plot lift distribution
-plt.subplot(1, 2, 2)
-plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
-plt.xlabel('Spanwise Position (η)')
-plt.ylabel('Lift Distribution (N/m)')
-plt.title('Lift Distribution')
-plt.grid(True)
-plt.legend()
+    # Plot lift distribution
+    plt.subplot(1, 2, 2)
+    plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Lift Distribution (N/m)')
+    plt.title('Lift Distribution')
+    plt.grid(True)
+    plt.legend()
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
