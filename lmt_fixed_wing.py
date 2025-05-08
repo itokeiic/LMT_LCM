@@ -30,8 +30,10 @@ def calculate_mi_bar(eta_j, eta_j_plus_1, b_i, b, eta_0i, rho, V):
         value_inside_sqrt = max(0, value_inside_sqrt)  
         return rho * b_i * V * np.sqrt(value_inside_sqrt)
 
-    integral, _ = quad(integrand, -eta_j, -eta_j_plus_1)
-    return integral / (eta_j - eta_j_plus_1)
+    # integral, _ = quad(integrand, -eta_j, -eta_j_plus_1)
+    integral, _ = quad(integrand, eta_j, eta_j_plus_1)
+    # return integral / (eta_j - eta_j_plus_1)
+    return integral / (eta_j_plus_1 - eta_j)
 
 def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n, 
                             placement='symmetric'):
@@ -130,9 +132,9 @@ if __name__ == "__main__":
     AR = 10 # Aspect ratio
     S = 10 # Wing area
     taper_ratio = 0.4 # used only in tapered wing
-    planform = 'rectangular' # options: 'rectangular', 'elliptic', 'tapered'
-    n = 10  # Number of sections
-    placement = 'symmetric' # options: 'symmetric', 'right'
+    planform = 'elliptic' # options: 'rectangular', 'elliptic', 'tapered'
+    n = 200  # Number of sections
+    placement = 'right' # options: 'symmetric', 'right'
 
     # Example wing geometry (constant chord and angle of attack)
     def constant_aoa(eta):
@@ -184,8 +186,8 @@ if __name__ == "__main__":
         #Uses Equation (17)
         lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
         induced_drag_distribution[i] = lift_distribution[i]*np.sin(np.arctan(induced_velocities[i]/V))
-        total_lift += lift_distribution[i]*(eta_positions[i+1]-eta_positions[i])
-        total_induced_drag += induced_drag_distribution[i]*(eta_positions[i+1]-eta_positions[i])
+        total_lift += lift_distribution[i]*(eta_positions[i+1]-eta_positions[i])*0.5*b
+        total_induced_drag += induced_drag_distribution[i]*(eta_positions[i+1]-eta_positions[i])*0.5*b
     if placement == 'symmetric':
         total_lift = 2*total_lift
         total_induced_drag = 2*total_induced_drag
@@ -199,13 +201,16 @@ if __name__ == "__main__":
     print("Total Induced Drag:",total_induced_drag)
     print("CL:",CL)
     print("CDi:",CDi)
+    print("Span:",b)
+    print("Root Chord:",chord_func(0))
 
     # Plotting
     plt.figure(figsize=(12, 6))
 
     # Plot induced velocities
     plt.subplot(1, 2, 1)
-    plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities')
+    plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities', color='orange')
+    plt.plot(eta_positions[:-1], [total_lift/(2*rho*V*np.pi*(0.5*b)**2)]*n, label='Induced Velocities, Elliptic Wing')
     plt.xlabel('Spanwise Position (η)')
     plt.ylabel('Induced Velocity (m/s)')
     plt.title('Induced Velocities')
