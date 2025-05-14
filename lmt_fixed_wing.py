@@ -36,7 +36,7 @@ def calculate_mi_bar(eta_j, eta_j_plus_1, b_i, b, eta_0i, rho, V):
     return integral / (eta_j_plus_1 - eta_j)
 
 def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n, 
-                            placement='symmetric'):
+                            placement='symmetric',span_spacing = 'linear'):
     """
     Solves for the induced velocities using the local momentum theory.
     
@@ -51,6 +51,8 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
         n: Number of elliptical wings. Also, number of sections
         placement: Whether the elliptical wings are symmetrically placed.
                    options are 'symmetric', 'right'.
+        span_spacing: the way virtual elliptic wings differ in their span
+                      options are 'linear', 'trigonometric'
 
     Returns:
         A tuple containing:
@@ -61,11 +63,15 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
     A = np.zeros((n, n))
     B = np.zeros(n)
     if placement == 'symmetric':
-        eta_positions = np.linspace(-1, 0, n + 1)
-        #eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+        if span_spacing == 'linear':
+            eta_positions = np.linspace(-1, 0, n + 1)
+        elif span_spacing == 'trigonometric':
+            eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
     elif placement == 'right':
-        eta_positions = np.linspace(-1, 1, n + 1)
-        #eta_positions = -1+2*np.sin(np.linspace(0.0,np.pi/2,n+1))
+        if span_spacing == 'linear':
+            eta_positions = np.linspace(-1, 1, n + 1)
+        elif span_spacing == 'trigonometric':
+            eta_positions = -1+2*np.sin(np.linspace(0.0,np.pi/2,n+1))
     
     for j in range(n): # for each section
         eta_j = eta_positions[j] #Section lower bound
@@ -133,8 +139,9 @@ if __name__ == "__main__":
     S = 10 # Wing area
     taper_ratio = 0.4 # used only in tapered wing
     planform = 'elliptic' # options: 'rectangular', 'elliptic', 'tapered'
-    n = 200  # Number of sections
+    n = 100  # Number of sections
     placement = 'right' # options: 'symmetric', 'right'
+    span_spacing = 'trigonometric' #options: 'linear', 'trigonometric'
 
     # Example wing geometry (constant chord and angle of attack)
     def constant_aoa(eta):
@@ -169,7 +176,7 @@ if __name__ == "__main__":
         chord_func, b = tapered_chord_function(taper_ratio,AR,S)
 
     dv, induced_velocities, eta_positions = solve_induced_velocities(
-        chord_func, constant_aoa, V, b, n, placement=placement
+        chord_func, constant_aoa, V, b, n, placement=placement, span_spacing=span_spacing
     )
 
     # Calculate lift distribution
@@ -205,10 +212,15 @@ if __name__ == "__main__":
     print("Root Chord:",chord_func(0))
 
     # Plotting
-    plt.figure(figsize=(12, 6))
-
-    # Plot induced velocities
-    plt.subplot(1, 2, 1)
+    plt.figure(figsize=(18, 6))
+    # Plot induced velocities dv
+    plt.subplot(1,3,1)
+    plt.bar(range(n),dv)
+    plt.xlabel('Virtual elliptic wing index')
+    plt.ylabel('Induced Velocity (m/s)')
+    plt.title('Induced Volocity Contributions from Virtual Elliptic Wings')
+    # Plot induced velocity distribution
+    plt.subplot(1, 3, 2)
     plt.plot(eta_positions[:-1], induced_velocities, label='Induced Velocities', color='orange')
     plt.plot(eta_positions[:-1], [total_lift/(2*rho*V*np.pi*(0.5*b)**2)]*n, label='Induced Velocities, Elliptic Wing')
     plt.xlabel('Spanwise Position (η)')
@@ -218,7 +230,7 @@ if __name__ == "__main__":
     plt.legend()
 
     # Plot lift distribution
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 3, 3)
     
     plt.plot(eta_positions[:-1], lift_distribution, label='Lift Distribution', color='orange')
     plt.plot(eta_positions[:-1], elliptical_lift_distribution(total_lift,b,eta_positions[:-1]),label='Elliptic Lift Distribution')
