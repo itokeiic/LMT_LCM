@@ -15,8 +15,9 @@ def f_function(xi):
         return 1
     else:
         return 1 - abs(xi) / np.sqrt(xi**2 - 1)
-def f_function_ave(xi_lb,xi_ub):
-    integral, _ = quad(f_function,xi_lb,xi_ub)
+
+def f_function_ave(xi_lb, xi_ub):
+    integral, _ = quad(f_function, xi_lb, xi_ub)
     return integral/(xi_ub - xi_lb)
 
 def calculate_mi_bar(eta_j, eta_j_plus_1, b_i, b, eta_0i, rho, V):
@@ -24,19 +25,16 @@ def calculate_mi_bar(eta_j, eta_j_plus_1, b_i, b, eta_0i, rho, V):
     
     Corresponds to Equation (21).
     """
-
     def integrand(eta):
         value_inside_sqrt = 1 - (b / b_i)**2 * (eta - eta_0i)**2
         value_inside_sqrt = max(0, value_inside_sqrt)  
         return rho * b_i * V * np.sqrt(value_inside_sqrt)
 
-    # integral, _ = quad(integrand, -eta_j, -eta_j_plus_1)
     integral, _ = quad(integrand, eta_j, eta_j_plus_1)
-    # return integral / (eta_j - eta_j_plus_1)
     return integral / (eta_j_plus_1 - eta_j)
 
 def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n, 
-                            placement='symmetric',span_spacing = 'linear'):
+                            placement='symmetric', span_spacing='linear'):
     """
     Solves for the induced velocities using the local momentum theory.
     
@@ -59,32 +57,30 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
         - induced_velocities: Array of induced velocities for each section.
         - eta_positions: Spanwise locations of each section.
     """
-
     A = np.zeros((n, n))
     B = np.zeros(n)
     if placement == 'symmetric':
         if span_spacing == 'linear':
             eta_positions = np.linspace(-1, 0, n + 1)
         elif span_spacing == 'trigonometric':
-            eta_positions = -np.cos(np.linspace(0.0,np.pi/2,n+1))
+            eta_positions = -np.cos(np.linspace(0.0, np.pi/2, n+1))
     elif placement == 'right':
         if span_spacing == 'linear':
             eta_positions = np.linspace(-1, 1, n + 1)
         elif span_spacing == 'trigonometric':
-            eta_positions = -1+2*np.sin(np.linspace(0.0,np.pi/2,n+1))
+            eta_positions = -1 + 2*np.sin(np.linspace(0.0, np.pi/2, n+1))
     
-    for j in range(n): # for each section
-        eta_j = eta_positions[j] #Section lower bound
-        eta_j_plus_1 = eta_positions[j + 1] #Section upper bound
+    for j in range(n):  # for each section
+        eta_j = eta_positions[j]  # Section lower bound
+        eta_j_plus_1 = eta_positions[j + 1]  # Section upper bound
         
         eta_pj = (eta_j + eta_j_plus_1) / 2  # Midpoint
         c_j = chord_func(eta_pj)
         theta_j = angle_of_attack_func(eta_pj)
 
-        for i in range(n): # for each elliptic wing
-            
+        for i in range(n):  # for each elliptic wing
             if placement == 'symmetric':
-                eta_0i = 0.0 # Symmetric placement. y_0i = 0, so eta_0i = 0
+                eta_0i = 0.0  # Symmetric placement. y_0i = 0, so eta_0i = 0
             elif placement == 'right':
                 eta_0i = 0.5*(eta_positions[i] + 1.0)
 
@@ -101,30 +97,29 @@ def solve_induced_velocities(chord_func, angle_of_attack_func, V, b, n,
                 return 0.5 * rho * V**2 * c_j * a / V * f_function(xi)
             
             integral2, _ = quad(integrand2, eta_j, eta_j_plus_1)
-            A[j,i] = A[j,i] + integral2/(eta_j_plus_1 - eta_j)
+            A[j, i] = A[j, i] + integral2/(eta_j_plus_1 - eta_j)
 
-        B[j] = 0.5 * rho * V**2 * c_j * a * theta_j  #simplified, induced vel term removed
+        B[j] = 0.5 * rho * V**2 * c_j * a * theta_j  # simplified, induced vel term removed
 
-    dv = np.linalg.solve(A, B) # Solve Equation (22)
+    dv = np.linalg.solve(A, B)  # Solve Equation (22)
     
-    #Obtain induced velocities for each section
-    induced_velocities = dv.copy() #initializing induced velocity vector
-    for j in range(n): # for section j
-        eta_j = eta_positions[j] #Section lower bound
-        eta_j_plus_1 = eta_positions[j + 1] #Section upper bound
+    # Obtain induced velocities for each section
+    induced_velocities = dv.copy()  # initializing induced velocity vector
+    for j in range(n):  # for section j
+        eta_j = eta_positions[j]  # Section lower bound
+        eta_j_plus_1 = eta_positions[j + 1]  # Section upper bound
         val = 0.0
-        for i in range(n): # for elliptic wing i
+        for i in range(n):  # for elliptic wing i
             if placement == 'symmetric':
-                eta_0i = 0.0 # Symmetric placement. y_0i = 0, so eta_0i = 0
+                eta_0i = 0.0  # Symmetric placement. y_0i = 0, so eta_0i = 0
             elif placement == 'right':
                 eta_0i = 0.5*(eta_positions[i] + 1.0)
             bi = b*(eta_0i - eta_positions[i])
             xi_lb = (eta_j - eta_0i)*(b/bi)
             xi_ub = (eta_j_plus_1 - eta_0i)*(b/bi)
 
-            val += dv[i]*f_function_ave(xi_lb,xi_ub)
+            val += dv[i]*f_function_ave(xi_lb, xi_ub)
         induced_velocities[j] = val
-
 
     return dv, induced_velocities, eta_positions
 
@@ -133,28 +128,27 @@ if __name__ == "__main__":
     # --- Example Usage ---
     rho = 1.225  # Air density
     V = 10       # Flight speed
-    #b = 10       # Wingspan
-    a = 2 * np.pi # Lift slope
-    AR = 10 # Aspect ratio
-    S = 10 # Wing area
-    taper_ratio = 0.4 # used only in tapered wing
-    planform = 'elliptic' # options: 'rectangular', 'elliptic', 'tapered'
-    n = 100  # Number of sections
-    placement = 'right' # options: 'symmetric', 'right'
-    span_spacing = 'trigonometric' #options: 'linear', 'trigonometric'
+    a = 2 * np.pi  # Lift slope
+    AR = 10  # Aspect ratio
+    S = 10  # Wing area
+    taper_ratio = 0.4  # used only in tapered wing
+    planform = 'rectangular'  # options: 'rectangular', 'elliptic', 'tapered'
+    n = 2  # Number of sections
+    placement = 'symmetric'  # options: 'symmetric', 'right'
+    span_spacing = 'linear'  # options: 'linear', 'trigonometric'
 
     # Example wing geometry (constant chord and angle of attack)
     def constant_aoa(eta):
         return 0.1
 
     if planform == 'rectangular':
-        def constant_chord_function(AR,S):
+        def constant_chord_function(AR, S):
             chord = S/AR
-            b=S/chord
+            b = S/chord
             def chord_func(eta):
                 return chord
             return chord_func, b
-        chord_func, b = constant_chord_function(AR,S)
+        chord_func, b = constant_chord_function(AR, S)
     elif planform == 'elliptic':
         def elliptical_chord_function(AR, S):
             b = np.sqrt(AR * S)
@@ -164,16 +158,15 @@ if __name__ == "__main__":
                 sqrt_val = max(0.0, 1.0 - eta**2) 
                 return c0 * np.sqrt(sqrt_val)
             return chord_func, b 
-        chord_func, b = elliptical_chord_function(AR,S)
+        chord_func, b = elliptical_chord_function(AR, S)
     elif planform == 'tapered':
         def tapered_chord_function(taper_ratio, AR, S):
             b = np.sqrt(AR * S)
             c_root = (2 * S) / (b * (1 + taper_ratio))
-            # c_tip = taper_ratio * c_root # Not directly needed in formula below
             def chord_func(eta):
                 return c_root * (1.0 - (1.0 - taper_ratio) * abs(eta))
             return chord_func, b
-        chord_func, b = tapered_chord_function(taper_ratio,AR,S)
+        chord_func, b = tapered_chord_function(taper_ratio, AR, S)
 
     dv, induced_velocities, eta_positions = solve_induced_velocities(
         chord_func, constant_aoa, V, b, n, placement=placement, span_spacing=span_spacing
@@ -190,11 +183,12 @@ if __name__ == "__main__":
         eta_val = (eta_positions[i] + eta_positions[i+1])/2
         chord_values[i] = chord_func(eta_val)
         aoa_values[i] = constant_aoa(eta_val)
-        #Uses Equation (17)
+        # Uses Equation (17)
         lift_distribution[i] = 0.5 * rho * V**2 * chord_values[i] * a * (aoa_values[i] - induced_velocities[i]/V)
         induced_drag_distribution[i] = lift_distribution[i]*np.sin(np.arctan(induced_velocities[i]/V))
-        total_lift += lift_distribution[i]*(eta_positions[i+1]-eta_positions[i])*0.5*b
+        total_lift += lift_distribution[i]*(eta_positions[i+1]-eta_positions[i])*0.5*b # Equation (17) is lift per unit span, so multiply by span section length y_{i+1} - y_i to get section lift 
         total_induced_drag += induced_drag_distribution[i]*(eta_positions[i+1]-eta_positions[i])*0.5*b
+    
     if placement == 'symmetric':
         total_lift = 2*total_lift
         total_induced_drag = 2*total_induced_drag
@@ -242,3 +236,27 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
+
+    # Create plots
+    plt.figure(figsize=(10, 6))
+    plt.plot(eta_positions[:-1], lift_distribution, 'b-', label='Lift Distribution')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Lift per Unit Span (N/m)')
+    plt.title(f'Lift Distribution - {planform.capitalize()} Wing')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig('lift_distribution.pdf', bbox_inches='tight', dpi=300)
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(eta_positions[:-1], induced_velocities, 'r-', label='Induced Velocity')
+    plt.xlabel('Spanwise Position (η)')
+    plt.ylabel('Induced Velocity (m/s)')
+    plt.title(f'Induced Velocity Distribution - {planform.capitalize()} Wing')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig('induced_velocity.pdf', bbox_inches='tight', dpi=300)
+    plt.close()
+
+    print(f"Total Lift: {total_lift:.2f} N")
+    print(f"Total Induced Drag: {total_induced_drag:.2f} N")
