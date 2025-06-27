@@ -108,25 +108,27 @@ class RotorBladeLMT:
 
     # C_i function from Appendix A-3 (A.3-2)
     def C_i(self, x_i):
-        return self.Omega * self.R * (1 + x_i) / 2.0 # x_i is non-dimensional root coordinate of i-th elliptic wing
+        return self.Omega * self.R * (1 - x_i) / 2.0 # x_i is non-dimensional root coordinate of i-th elliptic wing
     
     # H function from Appendix A-3 (A.3-6, A.3-7)
     def H(self, x_i, V_i_c, x, y):
         return -self.C_i(x_i)/3.0 * ((1-x)**1.5 - (1-y)**1.5) + self.g(x,y) * V_i_c
 
-    def solve_delta_v_one_blade(self, v_total_at_blade_rad):
+    def solve_delta_v_one_blade(self, v_total_at_blade_rad): 
         """
         Solves for delta_v_i for a single blade, given the total incident induced velocity.
         Uses Appendix A-3 (Eq. A.3-8, A.3-9).
-        v_total_at_blade_rad: induced velocity at blade element midpoints from all sources.
+        v_total_at_blade_rad: induced velocity at blade element midpoints from all sources, 
+        v_lprime_mprime_j.
         """
         delta_v = np.zeros(self.num_stations)
         
         # For hover, V_N = 0 (no climb/descent), U_i' = Omega * R * x_i'_c (Eq. 40 simplified)
         # x_i'_c are self.x_mid_points
+        V_N = 0.0
         U_prime = self.Omega * self.R * self.x_mid_points # Airspeed at segment midpoints
 
-        # Iterate for each elliptic wing / segment (i_prime in PDF notation)
+        # Iterate for each segment (i_prime in PDF notation)
         for i_prime in range(self.num_stations): # i_prime is 0 to num_stations-1
             # This i_prime corresponds to the i-th *strip* in Appendix A-3 terms
             # And we are solving for delta_v[i_prime]
@@ -158,8 +160,22 @@ class RotorBladeLMT:
             # And sum of m_i * delta_v_i for RHS of Eq 39
             sum_LHS_known_dv_terms = 0 # Sum of Δv_j * H(ξ_kj_upper, ξ_kj_lower) for j < i_prime
             sum_RHS_m_dv_terms = 0 # Sum of 2 * m_i * Δv_i for i < i_prime
+            x_strip_start = self.x_eta[i_prime]
+            x_strip_end   = self.x_eta[i_prime+1]
 
-            for i_wing in range(i_prime): # i_wing from 0 to i_prime-1
+            x_i_root = self.x_coords[i_prime]
+            V_i_c = self.Omega * self.R * (1 + x_i_root) / 2.0
+            xi_ii_prime_lower = (2*x_strip_start - (1+x_i_root)) / (1-x_i_root) if (1-x_i_root) !=0 else 0 # Eq A.3-4
+            xi_ii_prime_upper = (2*x_strip_end - (1+x_i_root)) / (1-x_i_root) if (1-x_i_root) !=0 else 0 # Eq A.3-3
+            
+            # Ensure xi within [-1,1] for physical validity of elliptic wing theory
+            xi_ii_prime_lower = np.clip(xi_ii_prime_lower, -1.0, 1.0)
+            xi_ii_prime_upper = np.clip(xi_ii_prime_upper, -1.0, 1.0)
+
+            numerator = U_i_prime*theta_i_prime - V_N - v_total_at_blade_rad[i_prime]
+            denominator = 1 + 2*self.R*(1 - x_i_root)**2/(a_i_prime*c_i_prime*self.segment_widths[i_prime]*U_i_prime)*self.H(x_i_root, V_i_c, xi_ii_prime_upper, xi_ii_prime_lower)
+
+            for i_wing in range(i_prime): # i_wing-th eliptic wing from 0 to i_prime-1
                 # Elliptic wing i_wing has root x_i_root = self.x_coords[i_wing]
                 # Strip i_prime is between x_eta[i_prime] and x_eta[i_prime+1]
                 
@@ -170,8 +186,6 @@ class RotorBladeLMT:
                 # Calculate m_i for elliptic wing i_wing evaluated over strip i_prime (Eq. 47)
                 # xi_lower/upper for transforming strip i_prime's bounds to elliptic wing i_wing's coords
                 # Eq 35: xi = (2x - (1+x_i))/(1-x_i)
-                x_strip_start = self.x_eta[i_prime]
-                x_strip_end   = self.x_eta[i_prime+1]
 
                 xi_ii_prime_lower = (2*x_strip_start - (1+x_i_root)) / (1-x_i_root) if (1-x_i_root) !=0 else 0 # Eq A.3-4
                 xi_ii_prime_upper = (2*x_strip_end - (1+x_i_root)) / (1-x_i_root) if (1-x_i_root) !=0 else 0 # Eq A.3-3
@@ -180,65 +194,73 @@ class RotorBladeLMT:
                 xi_ii_prime_lower = np.clip(xi_ii_prime_lower, -1.0, 1.0)
                 xi_ii_prime_upper = np.clip(xi_ii_prime_upper, -1.0, 1.0)
 
-                # Integral part for m_i_bar (H function from Appendix A.3-7)
-                # This represents integral(sqrt(1-xi^2)) d(xi) * (U_i_prime/V_i_c)
-                # but Eq 47 has (Omega*R*x + Vsin(psi)) / V_i_c. For hover, (Omega*R*x_i_prime_c)/V_i_c                # The H in Appendix A-3 (A.3-6, A.3-7) is directly related to m_i
-                # m_i = rho * pi * (R*(1-x_i)/2)^2 * V_i,c * H_from_integral_of_sqrt_1_minus_xi_sq
-                # Let's use Eq 47 properly for m_i
-                term_H = self.H_integrand_func(xi_ii_prime_upper) - self.H_integrand_func(xi_ii_prime_lower)
-                
-                # Airspeed ratio for Eq 47: (Omega*R*x_i_prime_c + V*np.sin(psi_j))/ V_i_c. V = 0 for hovering.
-                airspeed_ratio_for_mi = (self.Omega * self.R * x_i_prime_c) / V_i_c if V_i_c != 0 else 1.0
-                
-                # m_i_over_strip_i_prime = (RHO * np.pi * (self.b_i[i_wing]/2.0)**2 * V_i_c) * airspeed_ratio_for_mi * term_H / self.segment_widths[i_prime] # Average m_j over strip
-                
-                m_i_over_strip_i_prime = RHO*self.R/(2.0*self.segment_widths[i_prime])*(1-x_i_root)**2*self.H(x_i_root, V_i_c, xi_ii_prime_upper, xi_ii_prime_lower)
-                
-                sum_RHS_m_dv_terms += 2 * m_i_over_strip_i_prime * delta_v[i_wing]
+                numerator -= (1 + 2*self.R*(1 - x_i_root)**2/(a_i_prime*c_i_prime*self.segment_widths[i_prime]*U_i_prime)*self.H(x_i_root, V_i_c, xi_ii_prime_upper, xi_ii_prime_lower))*delta_v[i_wing] 
+                denominator = 1 + 2*self.R*(1 - x_i_root)**2/(a_i_prime*c_i_prime*self.segment_widths[i_prime]*U_i_prime)*self.H(x_i_root, V_i_c, xi_ii_prime_upper, xi_ii_prime_lower)
 
-                # Contribution of delta_v[i_wing] to induced velocity at x_i_prime_c
-                # This is 1 if x_i_prime_c is within span of elliptic wing i_wing, 0 otherwise
-                # Span of elliptic wing i_wing is [x_i_root, 1.0]
-                if x_i_prime_c >= x_i_root - 1e-6 : # x_i_prime_c is covered by wing i
-                    sum_LHS_known_dv_terms += delta_v[i_wing] 
 
-            # Now solve for delta_v[i_prime]
-            # L_bet_strip = sum_RHS_m_dv_terms + 2 * m_k_over_strip_k * delta_v[i_prime]
-            # And phi_k_prime depends on delta_v[i_prime]
-            # L_bet_strip = A * (theta_i_prime - (sum_LHS_known_dv_terms + delta_v[i_prime]) / U_i_prime)
-            # A * (theta_i_prime - sum_LHS_known_dv_terms/U_i_prime - delta_v[i_prime]/U_i_prime) = sum_RHS_m_dv_terms + 2*m_k*delta_v[i_prime]
-            # A*theta_mod - A*delta_v[i_prime]/U_i_prime = sum_RHS_m_dv_terms + 2*m_k*delta_v[i_prime]
-            # A*theta_mod - sum_RHS_m_dv_terms = delta_v[i_prime] * (A/U_i_prime + 2*m_k)
-            
-            A_const = 0.5 * RHO * U_i_prime**2 * c_i_prime * a_i_prime
-            theta_modified = theta_i_prime - sum_LHS_known_dv_terms / U_i_prime if U_i_prime > 1e-6 else theta_i_prime
-
-            # m_k_over_strip_k (for the i_prime-th elliptic wing itself, over strip i_prime)
-            x_k_root = self.x_coords[i_prime]
-            V_k_c = self.Omega * self.R * (1 + x_k_root) / 2.0
-            
-            xi_kk_lower = (2*self.x_eta[i_prime] - (1+x_k_root)) / (1-x_k_root) if (1-x_k_root) !=0 else 0
-            xi_kk_upper = (2*self.x_eta[i_prime+1] - (1+x_k_root)) / (1-x_k_root) if (1-x_k_root) !=0 else 0
-            xi_kk_lower = np.clip(xi_kk_lower, -1.0, 1.0)
-            xi_kk_upper = np.clip(xi_kk_upper, -1.0, 1.0)
-            term_H_k = self.H_integrand_func(xi_kk_upper) - self.H_integrand_func(xi_kk_lower)
-            airspeed_ratio_for_mk = (self.Omega * self.R * x_i_prime_c) / V_k_c if V_k_c !=0 else 1.0
-
-            m_k_over_strip_k = (RHO * np.pi * (self.b_i[i_prime]/2.0)**2 * V_k_c) * \
-                               airspeed_ratio_for_mk * term_H_k / (self.R*self.segment_widths[i_prime])
-            
-            numerator = A_const * theta_modified - sum_RHS_m_dv_terms
-            denominator = (A_const / U_i_prime if U_i_prime > 1e-6 else 0) + 2 * m_k_over_strip_k
-            
-            if np.abs(denominator) < 1e-9: # Avoid division by zero / instability
-                delta_v[i_prime] = 0 
-            else:
-                delta_v[i_prime] = numerator / denominator
+                    
+            #     # Integral part for m_i_bar (H function from Appendix A.3-7)
+            #     # This represents integral(sqrt(1-xi^2)) d(xi) * (U_i_prime/V_i_c)
+            #     # but Eq 47 has (Omega*R*x + Vsin(psi)) / V_i_c. For hover, (Omega*R*x_i_prime_c)/V_i_c                # The H in Appendix A-3 (A.3-6, A.3-7) is directly related to m_i
+            #     # m_i = rho * pi * (R*(1-x_i)/2)^2 * V_i,c * H_from_integral_of_sqrt_1_minus_xi_sq
+            #     # Let's use Eq 47 properly for m_i
+            #     term_H = self.H_integrand_func(xi_ii_prime_upper) - self.H_integrand_func(xi_ii_prime_lower)
                 
+            #     # Airspeed ratio for Eq 47: (Omega*R*x_i_prime_c + V*np.sin(psi_j))/ V_i_c. V = 0 for hovering.
+            #     airspeed_ratio_for_mi = (self.Omega * self.R * x_i_prime_c) / V_i_c if V_i_c != 0 else 1.0
+                
+            #     m_i_over_strip_i_prime = (RHO * np.pi * (self.b_i[i_wing]/2.0)**2 * V_i_c) * airspeed_ratio_for_mi * term_H / self.segment_widths[i_prime] # Average m_j over strip
+                
+            #     # m_i_over_strip_i_prime = RHO*self.R/(2.0*self.segment_widths[i_prime])*(1-x_i_root)**2*self.H(x_i_root, V_i_c, xi_ii_prime_upper, xi_ii_prime_lower)
+                
+            #     sum_RHS_m_dv_terms += 2 * m_i_over_strip_i_prime * delta_v[i_wing]
+
+            #     # Contribution of delta_v[i_wing] to induced velocity at x_i_prime_c
+            #     # This is 1 if x_i_prime_c is within span of elliptic wing i_wing, 0 otherwise
+            #     # Span of elliptic wing i_wing is [x_i_root, 1.0]
+            #     if x_i_prime_c >= x_i_root - 1e-6 : # x_i_prime_c is covered by wing i
+            #         sum_LHS_known_dv_terms += delta_v[i_wing] 
+            # # Now solve for delta_v[i_prime]
+            # # L_bet_strip = sum_RHS_m_dv_terms + 2 * m_k_over_strip_k * delta_v[i_prime]
+            # # And phi_k_prime depends on delta_v[i_prime]
+            # # L_bet_strip = A * (theta_i_prime - (sum_LHS_known_dv_terms + delta_v[i_prime]) / U_i_prime)
+            # # A * (theta_i_prime - sum_LHS_known_dv_terms/U_i_prime - delta_v[i_prime]/U_i_prime) = sum_RHS_m_dv_terms + 2*m_k*delta_v[i_prime]
+            # # A*theta_mod - A*delta_v[i_prime]/U_i_prime = sum_RHS_m_dv_terms + 2*m_k*delta_v[i_prime]
+            # # A*theta_mod - sum_RHS_m_dv_terms = delta_v[i_prime] * (A/U_i_prime + 2*m_k)
+            
+            # A_const = 0.5 * RHO * U_i_prime**2 * c_i_prime * a_i_prime
+            # theta_modified = theta_i_prime - sum_LHS_known_dv_terms / U_i_prime if U_i_prime > 1e-6 else theta_i_prime
+
+            # # m_k_over_strip_k (for the i_prime-th elliptic wing itself, over strip i_prime)
+            # x_k_root = self.x_coords[i_prime]
+            # V_k_c = self.Omega * self.R * (1 + x_k_root) / 2.0
+            
+            # xi_kk_lower = (2*self.x_eta[i_prime] - (1+x_k_root)) / (1-x_k_root) if (1-x_k_root) !=0 else 0
+            # xi_kk_upper = (2*self.x_eta[i_prime+1] - (1+x_k_root)) / (1-x_k_root) if (1-x_k_root) !=0 else 0
+            # xi_kk_lower = np.clip(xi_kk_lower, -1.0, 1.0)
+            # xi_kk_upper = np.clip(xi_kk_upper, -1.0, 1.0)
+            # term_H_k = self.H_integrand_func(xi_kk_upper) - self.H_integrand_func(xi_kk_lower)
+            # airspeed_ratio_for_mk = (self.Omega * self.R * x_i_prime_c) / V_k_c if V_k_c !=0 else 1.0
+
+            # m_k_over_strip_k = (RHO * np.pi * (self.b_i[i_prime]/2.0)**2 * V_k_c) * \
+            #                    airspeed_ratio_for_mk * term_H_k / (self.R*self.segment_widths[i_prime])
+            
+            # numerator = A_const * theta_modified - sum_RHS_m_dv_terms
+            # denominator = (A_const / U_i_prime if U_i_prime > 1e-6 else 0) + 2 * m_k_over_strip_k
+            
+            # if np.abs(denominator) < 1e-9: # Avoid division by zero / instability
+            #     delta_v[i_prime] = 0 
+            # else:
+            #     delta_v[i_prime] = numerator / denominator
+            delta_v[i_prime] = numerator / denominator
+        # print ('delta_v: ',delta_v)       
         return delta_v
 
     def calculate_v_induced_self(self, delta_v):
-        """ Calculates v_ijk (self-induced by current blade) at midpoints. Eq 37 """
+        """ 
+        Calculates v_ijk (self-induced by current blade) at midpoints. Eq 37 
+        delta_v is from solve_delta_v_one_blade
+        """
         v_self = np.zeros(self.num_stations)
         for i_station in range(self.num_stations): # For each station on the blade
             x_eval = self.x_mid_points[i_station]
@@ -264,20 +286,25 @@ class RotorBladeLMT:
 
     def hover_iteration(self, C_T_guess=0.005, use_wake_attenuation=True, fixed_Clm=None,
                         max_iter=100, tol=1e-5):
-        """ Iteratively solves for induced velocity in hover. """
+        """ 
+        Iteratively solves for induced velocity in hover. 
+        delta_tb = (2*pi)/(b*Omega) so there is always a blade passing over the space-fixed element lm.
+        In hover, all b blades experience the same lift distribution. Thus, it sufices to find the 
+        lift distribtion of single blade and multiply by b.
+        """
         # Initial guess for v_0 (average induced velocity) for C_lm calculation
         v0_guess = self.Omega * self.R * np.sqrt(C_T_guess / 2.0)
-        
-        delta_tb = (2 * np.pi) / (self.b * self.Omega) # Eq 56
+        delta_psi = 2*np.pi / self.b
+        delta_tb = delta_psi / self.Omega # Eq 56
         Z_val = v0_guess * delta_tb # Distance wake element travels
         Z_R_val = Z_val / self.R
-
+        V_N = 0.0
         # Initial guess for total induced velocity at blade elements (midpoints)
         v_total_iter = np.full(self.num_stations, v0_guess) # Start with uniform inflow
 
         print(f"Initial v0_guess: {v0_guess:.3f} m/s, Z/R: {Z_R_val:.3f}")
-
-        for iteration in range(max_iter):
+        # TODO: identify how many iterations should the j-iteration have.
+        for iteration in range(max_iter): #the outermost j-iteration in figure 10, i.e. j-iteration.
             v_wake_contribution = np.zeros(self.num_stations)
             if use_wake_attenuation and self.b > 1:
                 if fixed_Clm is not None:
@@ -352,7 +379,7 @@ rotor_fig16 = RotorBladeLMT(R=R_fig16, blade_root_R=blade_root_R_fig16, num_blad
                             twist_dist=zero_twist, # Zero twist
                             pitch_0_75=pitch_coll_fig16, # Collective pitch at 0.75R
                             Omega=Omega_fig16,
-                            num_stations=2, # As per PDF text for Fig 16
+                            num_stations=20, # As per PDF text for Fig 16
                             airfoil_lift_slope=5.73) # Common value, 2pi is ~6.28
 
 # Case 1: Solid line (non-uniform C_lm, i.e., use_wake_attenuation=True, fixed_Clm=None)

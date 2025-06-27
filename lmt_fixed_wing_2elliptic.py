@@ -132,10 +132,10 @@ a = 2 * np.pi # Lift slope
 theta = 0.1  # Angle of attack
 
 dv1, dv2, l1, l2, d1, d2= solve_induced_velocities_rectangular_wing(rho, V, b, c, a, theta)
-L = 2*(l1*(-0.5-(-1)) + l2*(0-(-0.5)))
+L = 2*(l1*(-0.5-(-1))*0.5*b + l2*(0-(-0.5))*0.5*b)
 CL = L/(0.5*rho*V**2*S)
 
-Di = 2*(d1*(-0.5-(-1)) + d2*(0-(-0.5)))
+Di = 2*(d1*(-0.5-(-1))*0.5*b + d2*(0-(-0.5))*0.5*b)
 CDi = Di/(0.5*rho*V**2*S)
 
 print("Induced Velocity (Section 1):", dv1)
