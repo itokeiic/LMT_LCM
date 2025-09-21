@@ -338,7 +338,7 @@ rotor_fig16 = RotorBladeLMT(R=R_fig16, blade_root_R=blade_root_R_fig16, num_blad
                             twist_dist=zero_twist, # Zero twist
                             pitch_0_75=pitch_coll_fig16, # Collective pitch at 0.75R
                             Omega=Omega_fig16,
-                            num_stations=2, # As per PDF text for Fig 16
+                            num_stations=20, # As per PDF text for Fig 16
                             airfoil_lift_slope=5.73) # Common value, 2pi is ~6.28
 
 # Case 1: Solid line (non-uniform C_lm, i.e., use_wake_attenuation=True, fixed_Clm=None)
