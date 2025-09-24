@@ -98,7 +98,8 @@ if __name__ == "__main__":
     # Example usage
     point_P = [0.7, 0.0, 0.0]  # Point where you want velocity
     R = 1.0                  # Vortex ring radius
-    dGamma_dZ = -1           # Wake strength per unit length
+    dGamma_dZ = 1           # Wake strength per unit length. Use negative if Z axis is positive upward.
+    # dGamma_dZ = -1           # Wake strength per unit length --- IGNORE ---
     
     vz_total = flexible_wake_integration(point_P, R, dGamma_dZ, z_max=4.2, n_points=201)
     print(f"Total induced vz at point P: {vz_total:.6f}")

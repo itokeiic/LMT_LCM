@@ -1,7 +1,8 @@
 """
 This code reproduces the induced velocity of a vortex ring as described in 
 NACA Report 1184: "The Normal Component of the Induced Velocity in the Vicinity 
-of a Lifting Rotor" by Heyson and Katzoff.
+of a Lifting Rotor and Some Examples of Its Application" by Walter Castles, Jr. and 
+Jacob Henri De Leeuw.
 
 The implementation follows the mathematical formulation presented in equations 
 (1) through (16) of the report.
@@ -13,8 +14,7 @@ from scipy.integrate import quad
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
-Gamma = -1.0  # Vortex ring strength (circulation)
-R = 1.0      # Vortex ring radius
+
 # --- Core Physics and Math Functions ---
 def calculate_wake_strength(CT, omega_R, lambda_val, mu):
     """
@@ -49,7 +49,8 @@ def vz_axis(z, R=1.0, Gamma=1.0):
 
     This is a direct implementation of Equation (16) from NACA TR 1184.
     """
-    return [-(0.5 * Gamma / R) * (1 + z**2)**-1.5, 0.0]
+    return [(0.5 * Gamma / R) * (1 + z**2)**-1.5, 0.0] #Eq.(16) has minus sign
+    # return [-(0.5 * Gamma / R) * (1 + z**2)**-1.5, 0.0] --- IGNORE ---
 
 def induced_velocity(r, z, R=1.0, Gamma=1.0):
     """
@@ -58,9 +59,11 @@ def induced_velocity(r, z, R=1.0, Gamma=1.0):
 
     Args:
         r (float): Non-dimensional radial distance from the ring's central 
-                   axis, normalized by the ring's radius (r/R).
+                   axis, normalized by the ring's radius (RP/R), where RP is the 
+                   dimensional radial distance.
         z (float): Non-dimensional axial distance from the plane containing 
-                   the ring, normalized by the ring's radius (z/R).
+                   the ring, normalized by the ring's radius (ZP/R), where ZP is the
+                   dimensional axial distance.
         R (float): The radius of the vortex ring.
         Gamma (float): The circulation strength of the vortex ring.
 
@@ -87,7 +90,7 @@ def induced_velocity(r, z, R=1.0, Gamma=1.0):
     A = K_tau - E_tau                                           # Eq (7)
     B = (x - 1) / d1 + (x + 1) / d2                             # Eq (8)
     C = d1 + d2                                                 # Eq (9)
-    D = tau_val*E_tau / (1 - tau_val**2)                                # Eq (10)
+    D = tau_val*E_tau / (1 - tau_val**2)                        # Eq (10)
     
     term_F_1 = (1 + x**2 + z**2) - d1 * d2
     term_F_2 = (1 + x) * d1**2 - (1 - x) * d2**2
@@ -97,16 +100,19 @@ def induced_velocity(r, z, R=1.0, Gamma=1.0):
     # Final velocity calculation (Eq. 5)
     # Note: The report's pre-factor is Gamma/(2*pi*R). The 1/x term comes
     # from the derivative of the stream function.
-    vz = -(Gamma / (2 * np.pi * x * R)) * (A * B + C * D * F)
-    vr = (Gamma / (2 * np.pi * x * R)) * (A * B_prime + C * D * F_prime)
+    vz = (Gamma / (2 * np.pi * x * R)) * (A * B + C * D * F)
+    vr = (-Gamma / (2 * np.pi * x * R)) * (A * B_prime + C * D * F_prime)
     return [vz, vr]
 
 if __name__ == "__main__":
     # Simple test cases
+    Gamma = 1.0  # Vortex ring strength (circulation), use Gamma = 1 if Z axis is downward positve. 
+    R = 1.0      # Vortex ring radius
+
     print("On-axis (r=0, z=0) (should be 0.5):", induced_velocity(0, 0,R=R,Gamma=Gamma)[0])  
     print("Off-axis (r=1, z=0) (should be inf):", induced_velocity(1, 0,R=R,Gamma=Gamma)[0]) 
     print("Off-axis (r=2, z=0 (should be -0.0431):", induced_velocity(2, 0,R=R,Gamma=Gamma)[0]) 
     print("Off-axis (r=1.4, z=1) (should be 0.0226):", induced_velocity(1.4, 1,R=R,Gamma=Gamma)[0]) 
     print("Off-axis (r=5.0, z=4.2) (should be 0.0002):", induced_velocity(5, 4.2,R=R,Gamma=Gamma)[0])
-    print("Off-axis (r=0.7, z=0.0) (should be 0.08461):", induced_velocity(0.7, 0.0,R=R,Gamma=Gamma)[0])
+    print("Off-axis (r=0.7, z=0.0) (should be 0.8461):", induced_velocity(0.7, 0.0,R=R,Gamma=Gamma)[0])
 
